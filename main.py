@@ -1,3 +1,4 @@
+from base64 import encode
 from os import sep
 from selenium.webdriver.firefox.options import Options
 from selenium import webdriver
@@ -13,8 +14,10 @@ class Data:
     all_data : list = []
     reloadTime : int
     total_pages : int
-
+    colmuns : list = ['name','exclusief-BTW','inclusief-BTW','eenheid']
     def __init__(self,reloadTime:int, total_pages:int):
+        """Needs to recieve the reload time=> faster internet and PC equals less reload time
+            Needs to recieve the amount of pages per material , for wood it is 14"""
         self.reloadTime = reloadTime
         self.total_pages = total_pages
 
@@ -42,15 +45,18 @@ class Data:
 
     def save_wood_as_csv(self)->None:
         '''Saves the list as a csv file'''
-        col = ['name','exclusief-BTW','inclusief-BTW','eenheid']
-        
         with open('wood_prices.csv', 'w',encoding='UTF8') as f:
             # using csv.writer method from CSV package
             write = csv.writer(f)
-            write.writerow(sep)
-            write.writerow(col)
+            write.writerow(self.colmuns)
             write.writerows(self.all_data)
 
+    def save_as_excel(self)->None:
+        """Saves directly as excel file"""
+       
+        df = pd.DataFrame(self.all_data,columns=self.colmuns)
+        with pd.ExcelWriter("wood_prices.xlsx") as writer:
+            df.to_excel(writer) 
 
     def split_currencies_wood(self,raw_text:str):
         """Splits raw prices into: inclusief btw per eenheid AND exclusief btw"""
@@ -74,7 +80,7 @@ def main():
     #make object from Data
     data= Data(3,14)
     _data = data.get_wood(driver)
-    data.save_wood_as_csv()
+    data.save_as_excel()
     
 
 
