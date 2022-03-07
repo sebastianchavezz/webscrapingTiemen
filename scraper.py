@@ -1,18 +1,61 @@
-from os import lstat
+
+from importlib.resources import path
+from selenium.webdriver.firefox.options import Options
+from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium import webdriver
 from bs4 import BeautifulSoup
 import time
 from tqdm import tqdm
-
 import pandas as pd
-import csv
+from openpyxl import load_workbook
+import os
+
+class Excel_handler:
+    template_path : str = 'prijsbepaling_template.xlsx'
+    sheet_name : str= 'Blad1'
+    username :str = os.environ.get('USERNAME')
+    
+    def __init__(self):
+        self.wb = load_workbook(self.template_path)
+        self.working_sheet = self.wb[self.sheet_name]
+
+
+
+    def concat_list_to_dataframe(self,*arrays:list)->pd.DataFrame:
+        """concatane the arrays in 1 pandas dataframe"""
+        print('adding to excel')
+        df = pd.DataFrame()
+        for array in arrays:
+            temp_df = pd.DataFrame(array)
+            df = pd.concat([temp_df,df])
+        print('added')
+        return df
+        
+
+
+    def add_dataframe_to_excel_and_save(self,dataFrame:pd.DataFrame):
+        """add the scrape data to the template provided"""
+        begin_cell = 8
+        omschrijving_cell = 1
+        price_cell = 2
+        amount_cell = 3
+        for i in range(len(dataFrame)):
+            self.working_sheet.cell(i+begin_cell,omschrijving_cell).value = dataFrame.iloc[i,0]
+            self.working_sheet.cell(i+begin_cell,price_cell).value = dataFrame.iloc[i,1]
+            self.working_sheet.cell(i+begin_cell,amount_cell).value = 0
+        
+        print('saving...')
+        path = f'C:\\Users\\{self.username}\\Desktop\\excel_template.xlsx'
+        self.wb.save(path)
+        print('saved.')
+
+
 
 class Data:
-
     reloadTime : int
     
-    colmuns : list = ['name','exclusief-BTW','eenheid']
+    colmuns : list = ['name','exclusief-BTW']
     def __init__(self,reloadTime:int):
         """Needs to recieve the reload time=> faster internet and PC equals less reload time
             Needs to recieve the amount of pages per material , for wood it is 14"""
@@ -21,7 +64,7 @@ class Data:
 
     def get_wood(self,driver:webdriver,total_pages:int,material:str)->list:
         '''Loops through all the pages to get all the wood articles'''
-        
+        print(f'getting {material}...')
         wood : list = []
         for page in tqdm(range(1,total_pages+1)):
             URL = {
@@ -37,42 +80,28 @@ class Data:
             for div in soup.find_all('div',class_='product-list-item col-lg-4 col-md-6 col-sm-12 mb-5'):
                 temp_list = []
                 name_product =div.find('span').text
-                exclusief, eenheid = self.split_currencies(div.find('div',class_='price').text)
+                exclusief = self.split_currencies(div.find('div',class_='price').text)
                 temp_list.append(name_product)
                 temp_list.append(exclusief)
-                temp_list.append(eenheid)
                 wood.append(temp_list)
         driver.close()
         
         return wood
-
-
-        
-    def save_wood_as_csv(self,data:list)->None:
-        '''Saves the list as a csv file'''
-        with open('wood_prices.csv', 'w',encoding='UTF8') as f:
-            # using csv.writer method from CSV package
-            write = csv.writer(f)
-            write.writerow(self.colmuns)
-            write.writerows(data)
-
-    def save_as_excel(self,data:list,name_file:str)->None:
-        """Saves directly as excel file"""
-       
-        df = pd.DataFrame(data,columns=self.colmuns)
-        with pd.ExcelWriter(name_file) as writer:
-            df.to_excel(writer) 
+ 
 
     def split_currencies(self,raw_text:str):
         """Splits raw prices into: inclusief btw per eenheid AND exclusief btw"""
         arr = []
-        eenheid_index= 3
         exclusief_index = 1
         #getting rid of the noice
         raw_text = raw_text.replace(u'\xa0', u' ')
         arr = raw_text.split(' ')
-        
-        return arr[exclusief_index],arr[eenheid_index]
+        currencie = arr[exclusief_index].replace('.','')
+        currencie = float(currencie.replace(',','.'))
+
+        return currencie
+
+
 
 
 def main():
@@ -80,19 +109,24 @@ def main():
     options = Options()
     options.headless = True
     
+    
     #make object from Data
     data= Data(reloadTime=3)
+    excel_handler = Excel_handler()
     #get wood 
+    
     wood = data.get_wood(webdriver.Firefox(options=options),total_pages=14,material='wood')
-    data.save_as_excel(wood,"wood_prices.xlsx")
+    
     #get platen
     construtie_platen = data.get_wood(webdriver.Firefox(options=options),total_pages=12,material='platen')
-    data.save_as_excel (construtie_platen,'plate.xlsx')
+    
     #get fineer
     fineer = data.get_wood(webdriver.Firefox(options=options),total_pages=2,material='fineer')
-    data.save_as_excel (fineer,'fineer.xlsx')
+    
+    
+    df = excel_handler.concat_list_to_dataframe(fineer,construtie_platen,wood)
+    excel_handler.add_dataframe_to_excel_and_save(df)
+
 
 if __name__ == '__main__':
     main()
-
-
